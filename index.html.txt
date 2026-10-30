@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" id="html-root">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تتبع المصاريف - Expense Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap');
+        body { font-family: 'Tajawal', sans-serif; }
+        
+        .modal-enter { animation: fadeIn 0.2s ease-out; }
+        .modal-content-enter { animation: slideUp 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 75% { transform: translateX(10px); } }
+        .shake-anim { animation: shake 0.3s ease-in-out; }
+        
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center p-4 md:py-8 overflow-x-hidden">
+
+    <!-- PIN Screen Overlay 🔒 -->
+    <div id="pin-screen" class="fixed inset-0 z-[100] hidden bg-slate-950 flex-col items-center justify-center p-6 transition-all duration-300">
+        <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(52,211,153,0.3)]">
+            <i class="fa-solid fa-lock text-3xl text-slate-950"></i>
+        </div>
+        <h2 id="txt-pin-title" class="text-2xl font-bold mb-2">أدخل الرمز السري</h2>
+        <p id="txt-pin-desc" class="text-slate-400 text-sm mb-8">Apex Finance</p>
+        
+        <input type="password" id="pin-input" maxlength="4" pattern="[0-9]*" inputmode="numeric" oninput="checkPin()" class="w-32 bg-slate-900 border-2 border-slate-700 rounded-xl px-4 py-3 text-3xl text-center text-cyan-400 tracking-[0.5em] focus:outline-none focus:border-cyan-500 shadow-inner">
+        <p id="pin-error" class="text-rose-500 text-xs mt-3 hidden">الرمز غير صحيح!</p>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 z-50 hidden bg-black/60 backdrop-blur-sm items-center justify-center p-4 modal-enter">
+        <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-2xl max-w-sm w-full modal-content-enter max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div class="flex justify-between items-center mb-5 border-b border-slate-800 pb-4 sticky top-0 bg-slate-900 z-10">
+                <div class="flex items-center gap-3">
+                    <svg class="w-6 h-6" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M16 3L3 27H11L16 17.5L21 27H29L16 3Z" fill="url(#apex-grad-mini)"/><path d="M16 17.5L11 27H21L16 17.5Z" fill="#06b6d4"/>
+                        <defs><linearGradient id="apex-grad-mini" x1="16" y1="3" x2="16" y2="27" gradientUnits="userSpaceOnUse"><stop stop-color="#34d399"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>
+                    </svg>
+                    <h3 id="txt-settings-title" class="text-lg font-bold text-slate-200">الإعدادات</h3>
+                </div>
+                <button onclick="closeSettings()" class="text-slate-400 hover:text-rose-400 transition cursor-pointer w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            
+            <div class="space-y-4">
+                <!-- Security (PIN) -->
+                <div class="bg-slate-950/50 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                    <div>
+                        <label id="txt-sec-lbl" class="block text-sm text-slate-200 font-bold mb-1">قفل التطبيق (PIN) 🔒</label>
+                        <p id="txt-sec-desc" class="text-[10px] text-slate-400">حماية المصاريف ديالك</p>
+                    </div>
+                    <button onclick="togglePinSetup()" id="btn-pin-toggle" class="bg-slate-800 text-cyan-400 px-3 py-1.5 rounded-lg text-xs font-bold border border-cyan-900 hover:bg-slate-700 transition cursor-pointer">إعداد</button>
+                </div>
+
+                <!-- Languages & Currency -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                        <label id="txt-lang-lbl" class="block text-[11px] text-slate-400 mb-2">اللغة:</label>
+                        <div class="flex gap-1">
+                            <button onclick="setLanguage('ar')" id="btn-lang-ar" class="flex-1 text-[10px] py-1.5 rounded-lg font-bold transition cursor-pointer border border-transparent">دارجة</button>
+                            <button onclick="setLanguage('en')" id="btn-lang-en" class="flex-1 text-[10px] py-1.5 rounded-lg font-bold transition cursor-pointer border border-transparent">EN</button>
+                        </div>
+                    </div>
+                    <div class="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                        <label id="txt-curr-lbl" class="block text-[11px] text-slate-400 mb-2">العملة:</label>
+                        <div class="flex gap-1">
+                            <button onclick="setCurrency('MAD')" id="btn-curr-mad" class="flex-1 text-[10px] py-1.5 rounded-lg transition cursor-pointer font-bold">د.م</button>
+                            <button onclick="setCurrency('USD')" id="btn-curr-usd" class="flex-1 text-[10px] py-1.5 rounded-lg transition cursor-pointer font-bold">$</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Budget -->
+                <div class="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+                    <label id="txt-budget-lbl" class="block text-[11px] text-slate-400 mb-1">الميزانية الشهرية (Budget):</label>
+                    <div class="flex gap-2">
+                        <input type="number" id="budget-input" placeholder="0.00" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-cyan-500">
+                        <button onclick="saveBudget()" id="btn-save-budget" class="bg-cyan-600 text-slate-950 px-3 py-1 rounded-lg text-xs font-bold cursor-pointer hover:bg-cyan-500">حفظ</button>
+                    </div>
+                </div>
+
+                <!-- Data -->
+                <div class="bg-slate-950/50 p-3 rounded-xl border border-slate-800 space-y-2">
+                    <label id="txt-data-lbl" class="block text-[11px] text-slate-400 mb-1">البيانات (Data):</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="exportToCSV()" id="btn-export" class="w-full bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 py-2 rounded-lg text-xs hover:bg-emerald-600/30 transition cursor-pointer"><i class="fa-solid fa-download"></i> تصدير</button>
+                        <label class="w-full bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 py-2 rounded-lg text-xs hover:bg-cyan-600/30 transition cursor-pointer text-center flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-upload"></i> <span id="txt-import">استيراد</span>
+                            <input type="file" accept=".csv" class="hidden" onchange="importCSV(event)">
+                        </label>
+                    </div>
+                    <button onclick="requestClearAll()" id="btn-clear" class="w-full mt-2 bg-rose-600/20 text-rose-400 border border-rose-500/30 py-2 rounded-lg text-xs hover:bg-rose-600/30 transition cursor-pointer"><i class="fa-solid fa-trash"></i> مسح الكل</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div id="custom-modal" class="fixed inset-0 z-50 hidden bg-black/60 backdrop-blur-sm items-center justify-center p-4 modal-enter">
+        <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-2xl max-w-sm w-full modal-content-enter">
+            <div class="text-center mb-5">
+                <div class="w-12 h-12 rounded-full bg-rose-500/20 text-rose-500 flex items-center justify-center mx-auto mb-3 text-xl"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                <h3 id="modal-title" class="text-lg font-bold text-slate-200">تأكيد</h3>
+                <p id="modal-desc" class="text-sm text-slate-400 mt-2">واش متأكد؟</p>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="closeConfirmModal()" id="modal-cancel" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded-lg font-medium transition cursor-pointer">إلغاء</button>
+                <button onclick="confirmModalAction()" id="modal-confirm" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white py-2 rounded-lg font-bold transition cursor-pointer shadow-lg shadow-rose-900/50">تأكيد</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App Container -->
+    <div id="app-container" class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden relative">
+        
+        <!-- App Header with Logo -->
+        <div class="bg-slate-950 p-5 border-b border-slate-800 flex justify-between items-center sticky top-0 z-10 shadow-md">
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 flex items-center justify-center shadow-[0_0_15px_rgba(52,211,153,0.15)] relative overflow-hidden group">
+                    <svg class="w-6 h-6 transform group-hover:scale-110 transition-transform duration-300" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M16 3L3 27H11L16 17.5L21 27H29L16 3Z" fill="url(#apex-grad)"/><path d="M16 17.5L11 27H21L16 17.5Z" fill="#06b6d4"/>
+                        <defs><linearGradient id="apex-grad" x1="16" y1="3" x2="16" y2="27" gradientUnits="userSpaceOnUse"><stop stop-color="#34d399"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>
+                    </svg>
+                </div>
+                <div class="flex flex-col justify-center">
+                    <h1 id="app-title" class="text-xl font-extrabold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent leading-tight tracking-wide">مسير المصاريف</h1>
+                    <span class="text-[9px] text-slate-500 font-bold tracking-[0.2em] uppercase mt-0.5">Apex Finance</span>
+                </div>
+            </div>
+            
+            <button onclick="openSettings()" class="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-cyan-400 hover:border-cyan-500/50 transition cursor-pointer shadow-lg hover:rotate-90 duration-300">
+                <i class="fa-solid fa-gear"></i>
+            </button>
+        </div>
+
+        <div class="p-5">
+            <!-- Filter Month -->
+            <div class="flex justify-between items-center bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80 mb-4 shadow-inner">
+                <label id="txt-filter-lbl" class="text-xs text-slate-400 font-medium ml-1 mr-1">تصفية بالشهر:</label>
+                <select id="month-filter" onchange="applyFilter()" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer shadow-sm">
+                    <!-- Populated dynamically -->
+                </select>
+            </div>
+
+            <!-- Balance Cards -->
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <div class="bg-slate-800/50 border border-slate-700/60 p-3.5 rounded-xl shadow-sm">
+                    <p id="txt-income-lbl" class="text-[11px] text-slate-400 mb-1">المداخيل</p>
+                    <h2 id="total-income" class="text-lg font-bold text-emerald-400 truncate">0.00</h2>
+                </div>
+                <div class="bg-slate-800/50 border border-slate-700/60 p-3.5 rounded-xl shadow-sm">
+                    <p id="txt-expense-lbl" class="text-[11px] text-slate-400 mb-1">المصاريف</p>
+                    <h2 id="total-expense" class="text-lg font-bold text-rose-400 truncate">0.00</h2>
+                </div>
+            </div>
+
+            <!-- Net Balance & Smart Insights -->
+            <div class="bg-gradient-to-r from-slate-900 to-slate-800 border border-slate-700 p-4 rounded-xl mb-5 text-center relative overflow-hidden shadow-lg shadow-black/20">
+                <div class="relative z-10">
+                    <p id="txt-net-lbl" class="text-xs text-slate-400 mb-1">الرصيد المتبقي</p>
+                    <h2 id="net-balance" class="text-3xl font-extrabold text-cyan-300">0.00</h2>
+                </div>
+                
+                <!-- Smart Insights (New 💡) -->
+                <div id="insights-container" class="mt-4 pt-3 border-t border-slate-700/50 hidden flex-col gap-2">
+                    <div class="flex justify-between items-center text-[10px] bg-slate-950/50 px-2 py-1.5 rounded-lg border border-slate-800">
+                        <span class="text-slate-400"><i class="fa-solid fa-chart-line text-cyan-500 mr-1 ml-1"></i> <span id="txt-avg-lbl">المعدل اليومي:</span></span>
+                        <span id="insight-avg" class="font-bold text-cyan-400">0.00</span>
+                    </div>
+                    <div class="flex justify-between items-center text-[10px] bg-slate-950/50 px-2 py-1.5 rounded-lg border border-slate-800">
+                        <span class="text-slate-400"><i class="fa-solid fa-fire text-rose-500 mr-1 ml-1"></i> <span id="txt-max-lbl">أكبر مصروف:</span></span>
+                        <span id="insight-max" class="font-bold text-rose-400 truncate max-w-[120px]">...</span>
+                    </div>
+                </div>
+
+                <!-- Budget Progress Bar -->
+                <div id="budget-container" class="mt-4 pt-3 border-t border-slate-700/50 hidden">
+                    <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+                        <span id="txt-budget-used">استهلكت: 0</span>
+                        <span id="txt-budget-total">من: 0</span>
+                    </div>
+                    <div class="w-full bg-slate-950 rounded-full h-2 shadow-inner">
+                        <div id="budget-bar" class="bg-emerald-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add/Edit Transaction Form -->
+            <form id="transaction-form" class="space-y-3 mb-5 p-3.5 rounded-xl bg-slate-950/40 border border-slate-800 transition-all duration-300">
+                <div class="flex justify-between items-center mb-1">
+                    <h3 id="form-title" class="text-sm font-bold text-cyan-400 hidden"><i class="fa-solid fa-pen-to-square"></i> تعديل</h3>
+                    <button type="button" id="btn-cancel-edit" onclick="cancelEdit()" class="text-xs text-rose-400 hover:underline hidden cursor-pointer">إلغاء</button>
+                </div>
+                <div><input type="text" id="description" required placeholder="وصف المعاملة (مثال: قهوة...)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-cyan-500 transition placeholder-slate-600 shadow-sm"></div>
+                <div class="grid grid-cols-2 gap-3">
+                    <input type="number" step="0.01" id="amount" required placeholder="المبلغ (0.00)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-cyan-500 transition shadow-sm">
+                    <select id="type" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-cyan-500 text-slate-300 shadow-sm cursor-pointer">
+                        <option value="expense" id="opt-exp">مصروف (-)</option>
+                        <option value="income" id="opt-inc">مدخول (+)</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <select id="category" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-cyan-500 text-slate-300 shadow-sm cursor-pointer">
+                        <option value="food" id="cat-food">🍔 أكل</option><option value="transport" id="cat-trans">🚗 نقل</option>
+                        <option value="bills" id="cat-bills">🏠 فواتير</option><option value="shopping" id="cat-shop">🛍️ تسوق</option>
+                        <option value="salary" id="cat-sal">💼 راتب</option><option value="other" id="cat-oth">✨ أخرى</option>
+                    </select>
+                    <input type="date" id="tx-date" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-2.5 text-sm focus:outline-none focus:border-cyan-500 text-slate-300 shadow-sm cursor-pointer">
+                </div>
+                
+                <!-- Recurring Checkbox (New 🔄) -->
+                <div class="flex items-center gap-2 pt-1 pb-1">
+                    <input type="checkbox" id="is-recurring" class="w-4 h-4 accent-cyan-500 bg-slate-900 border-slate-700 rounded cursor-pointer">
+                    <label for="is-recurring" id="txt-recurring-lbl" class="text-[11px] text-slate-400 cursor-pointer">يتكرر كل شهر (Recurring)</label>
+                </div>
+
+                <button type="submit" id="btn-submit" class="w-full bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 text-slate-950 font-bold py-3 rounded-lg transition text-sm shadow-lg shadow-cyan-950/50 cursor-pointer mt-1">
+                    <i class="fa-solid fa-plus mr-1"></i> إضافة
+                </button>
+            </form>
+
+            <!-- Chart Section -->
+            <div class="bg-slate-950/50 border border-slate-800 p-4 rounded-2xl mb-5 shadow-sm">
+                <h3 id="txt-chart-title" class="text-xs font-semibold text-slate-400 mb-4 text-center">التوزيع (Expenses Breakdown)</h3>
+                
+                <div id="chart-empty" class="hidden flex-col items-center justify-center py-4 text-slate-500 transition-all">
+                    <div class="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center mb-3"><i class="fa-solid fa-chart-pie text-xl text-slate-600"></i></div>
+                    <p id="txt-chart-empty" class="text-xs">باقي مخسرتي والو هاد الفترة!</p>
+                </div>
+
+                <div id="chart-wrapper" class="flex items-center gap-4">
+                    <div class="w-28 h-28 shrink-0 relative drop-shadow-xl"><canvas id="expenseChart"></canvas></div>
+                    <div id="chart-legend" class="flex-1 flex flex-col gap-1.5 max-h-32 overflow-y-auto pr-1 custom-scrollbar"></div>
+                </div>
+            </div>
+
+            <!-- Transactions History -->
+            <div>
+                <div class="flex justify-between items-center mb-3">
+                    <div class="flex flex-col md:flex-row md:items-center gap-2">
+                        <h3 id="txt-history-lbl" class="text-sm font-semibold text-slate-300">سجل المعاملات</h3>
+                        <span id="active-cat-badge" onclick="toggleCatFilter(null)" class="hidden text-[10px] bg-cyan-900/40 text-cyan-400 px-2 py-0.5 rounded border border-cyan-500/30 cursor-pointer hover:bg-cyan-900/60 transition">
+                            <span id="txt-active-cat">فيلتر</span> <i class="fa-solid fa-xmark ml-1"></i>
+                        </span>
+                    </div>
+                    <div class="relative w-32">
+                        <i class="fa-solid fa-magnifying-glass absolute top-2 right-2.5 text-slate-500 text-xs"></i>
+                        <input type="text" id="search-input" onkeyup="updateUI()" placeholder="بحث..." class="w-full bg-slate-950 border border-slate-700 rounded-full pr-7 pl-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 shadow-inner">
+                    </div>
+                </div>
+                <ul id="transaction-list" class="space-y-2 pb-4"></ul>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Data Init
+        let transactions = JSON.parse(localStorage.getItem('transactions_apex_pure')) || [];
+        let currentLang = localStorage.getItem('apex_lang') || 'ar';
+        let currentCurr = localStorage.getItem('apex_curr') || 'MAD';
+        let monthlyBudget = parseFloat(localStorage.getItem('apex_budget')) || 0;
+        let appPin = localStorage.getItem('apex_pin') || null;
+        let currentFilter = 'all';
+        let selectedChartCategory = null;
+        let expenseChart = null;
+        let editingIndex = -1; let modalActionType = ''; let modalActionIndex = -1;
+
+        const catKeysAll = ['food', 'transport', 'bills', 'shopping', 'salary', 'other'];
+        const chartColors = ['#f43f5e', '#3b82f6', '#eab308', '#a855f7', '#10b981', '#64748b'];
+
+        document.getElementById('tx-date').valueAsDate = new Date();
+        document.getElementById('budget-input').value = monthlyBudget || '';
+
+        // --- NEW: PIN Lock Logic ---
+        if(appPin) {
+            document.getElementById('pin-screen').classList.remove('hidden');
+            document.getElementById('pin-screen').classList.add('flex');
+            document.getElementById('btn-pin-toggle').textContent = currentLang === 'ar' ? 'إزالة' : 'Remove';
+            document.getElementById('btn-pin-toggle').classList.replace('text-cyan-400', 'text-rose-400');
+            document.getElementById('btn-pin-toggle').classList.replace('border-cyan-900', 'border-rose-900');
+        }
+
+        function checkPin() {
+            const input = document.getElementById('pin-input');
+            if(input.value.length === 4) {
+                if(input.value === appPin) {
+                    document.getElementById('pin-screen').classList.add('hidden');
+                    document.getElementById('pin-screen').classList.remove('flex');
+                    input.value = '';
+                } else {
+                    input.classList.add('shake-anim', 'border-rose-500', 'text-rose-500');
+                    document.getElementById('pin-error').classList.remove('hidden');
+                    if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                    setTimeout(() => {
+                        input.classList.remove('shake-anim', 'border-rose-500', 'text-rose-500');
+                        document.getElementById('pin-error').classList.add('hidden');
+                        input.value = '';
+                    }, 500);
+                }
+            }
+        }
+
+        function togglePinSetup() {
+            if(appPin) {
+                // Remove PIN
+                if(confirm(translations[currentLang].removePinConfirm)) {
+                    localStorage.removeItem('apex_pin');
+                    appPin = null;
+                    document.getElementById('btn-pin-toggle').textContent = translations[currentLang].btnSetup;
+                    document.getElementById('btn-pin-toggle').classList.replace('text-rose-400', 'text-cyan-400');
+                    document.getElementById('btn-pin-toggle').classList.replace('border-rose-900', 'border-cyan-900');
+                }
+            } else {
+                // Set PIN
+                const newPin = prompt(translations[currentLang].setPinPrompt);
+                if(newPin && newPin.length === 4 && !isNaN(newPin)) {
+                    localStorage.setItem('apex_pin', newPin);
+                    appPin = newPin;
+                    document.getElementById('btn-pin-toggle').textContent = translations[currentLang].btnRemove;
+                    document.getElementById('btn-pin-toggle').classList.replace('text-cyan-400', 'text-rose-400');
+                    document.getElementById('btn-pin-toggle').classList.replace('border-cyan-900', 'border-rose-900');
+                    alert(translations[currentLang].pinSuccess);
+                } else if (newPin) {
+                    alert(translations[currentLang].pinError);
+                }
+            }
+        }
+
+        // --- NEW: Recurring Expenses Logic (Runs on Load) ---
+        const currentMonthStr = new Date().toISOString().substring(0,7);
+        const lastOpenedMonth = localStorage.getItem('apex_last_month');
+        
+        if (lastOpenedMonth && lastOpenedMonth !== currentMonthStr) {
+            // New month started! Duplicate recurring expenses
+            const recurringTxs = transactions.filter(tx => tx.isRecurring && tx.date.startsWith(lastOpenedMonth));
+            recurringTxs.reverse().forEach(tx => {
+                // Change date to current month, same day
+                const day = tx.date.substring(8,10);
+                const newDate = `${currentMonthStr}-${day}`;
+                transactions.unshift({ ...tx, date: newDate });
+            });
+            localStorage.setItem('transactions_apex_pure', JSON.stringify(transactions));
+        }
+        localStorage.setItem('apex_last_month', currentMonthStr);
+
+
+        // Translations Dictionary
+        const translations = {
+            ar: {
+                title: "مسير المصاريف", incomeLbl: "المداخيل", expenseLbl: "المصاريف", netLbl: "الرصيد المتبقي",
+                chartCatTitle: "التوزيع (Breakdown)", chartEmptyMsg: "باقي مخسرتي والو هاد الفترة!",
+                descPh: "وصف المعاملة (مثال: قهوة...)", amountPh: "المبلغ (0.00)", optExp: "مصروف (-)", optInc: "مدخول (+)",
+                cats: { food: "أكل وشرب", transport: "نقل ومواصلات", bills: "فواتير وكرى", shopping: "تسوق", salary: "راتب وعمل", other: "أخرى" },
+                months: ["يناير", "فبراير", "مارس", "أبريل", "ماي", "يونيو", "يوليوز", "غشت", "شتنبر", "أكتوبر", "نونبر", "دجنبر"],
+                submitBtnAdd: '<i class="fa-solid fa-plus ml-1"></i> إضافة', submitBtnEdit: '<i class="fa-solid fa-check ml-1"></i> حفظ', 
+                formTitleEdit: '<i class="fa-solid fa-pen-to-square"></i> تعديل', cancelEdit: "إلغاء", 
+                historyLbl: "سجل المعاملات", emptyMsg: "لا توجد معاملات", searchPh: "بحث...", filterPrefix: "فيلتر:",
+                langLbl: "اللغة:", currLbl: "العملة:", filterLbl: "تصفية بالشهر:", optFilterAll: "كل الشهور",
+                settingsTitle: "الإعدادات", secLbl: "قفل التطبيق (PIN) 🔒", secDesc: "حماية المصاريف ديالك", btnSetup: "إعداد", btnRemove: "إزالة",
+                budgetLbl: "الميزانية الشهرية (Budget):", budgetSave: "حفظ", budgetUsed: "استهلكت:", budgetFrom: "من:",
+                dataLbl: "البيانات (Data):", btnExport: '<i class="fa-solid fa-download"></i> تصدير', btnImport: 'استيراد', btnClear: '<i class="fa-solid fa-trash"></i> مسح الكل',
+                modalTitleClearAll: "حذف كل البيانات", modalDescClearAll: "واش متأكد بغيتي تمسح كاع البيانات؟",
+                modalTitleClearSingle: "مسح المعاملة", modalDescClearSingle: "واش متأكد بغيتي تمسح هاد المعاملة؟",
+                modalCancel: "إلغاء", modalConfirm: "تأكيد", importSuccess: "تم استيراد البيانات بنجاح!",
+                setPinPrompt: "دخل 4 ديال الأرقام كود سري (PIN):", pinSuccess: "تم تفعيل القفل بنجاح!", pinError: "الكود خصو يكون 4 أرقام فقط!", removePinConfirm: "واش متأكد بغيتي تحيد الكود السري؟",
+                pinTitle: "أدخل الرمز السري", avgLbl: "المعدل اليومي:", maxLbl: "أكبر مصروف:", recurringLbl: "يتكرر كل شهر (Recurring)"
+            },
+            en: {
+                title: "Expense Tracker", incomeLbl: "Total Income", expenseLbl: "Total Expenses", netLbl: "Net Balance",
+                chartCatTitle: "Expenses Breakdown", chartEmptyMsg: "No expenses yet!",
+                descPh: "Description (Ex: Coffee...)", amountPh: "Amount (0.00)", optExp: "Expense (-)", optInc: "Income (+)",
+                cats: { food: "Food & Drinks", transport: "Transport", bills: "Bills & Rent", shopping: "Shopping", salary: "Salary", other: "Other" },
+                months: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+                submitBtnAdd: '<i class="fa-solid fa-plus mr-1"></i> Add', submitBtnEdit: '<i class="fa-solid fa-check mr-1"></i> Save', 
+                formTitleEdit: '<i class="fa-solid fa-pen-to-square"></i> Edit', cancelEdit: "Cancel", 
+                historyLbl: "History", emptyMsg: "No transactions", searchPh: "Search...", filterPrefix: "Filter:",
+                langLbl: "Language:", currLbl: "Currency:", filterLbl: "Filter by Month:", optFilterAll: "All Months",
+                settingsTitle: "Settings", secLbl: "App Lock (PIN) 🔒", secDesc: "Protect your data", btnSetup: "Setup", btnRemove: "Remove",
+                budgetLbl: "Monthly Budget Limit:", budgetSave: "Save", budgetUsed: "Used:", budgetFrom: "of:",
+                dataLbl: "Data Management:", btnExport: '<i class="fa-solid fa-download"></i> Export', btnImport: 'Import', btnClear: '<i class="fa-solid fa-trash"></i> Clear All',
+                modalTitleClearAll: "Clear All Data", modalDescClearAll: "Are you sure you want to delete all data?",
+                modalTitleClearSingle: "Delete Transaction", modalDescClearSingle: "Are you sure you want to delete this?",
+                modalCancel: "Cancel", modalConfirm: "Confirm", importSuccess: "Data imported successfully!",
+                setPinPrompt: "Enter a 4-digit PIN:", pinSuccess: "PIN set successfully!", pinError: "PIN must be exactly 4 digits!", removePinConfirm: "Are you sure you want to remove the PIN?",
+                pinTitle: "Enter PIN", avgLbl: "Daily Average:", maxLbl: "Highest Exp:", recurringLbl: "Recurring monthly"
+            }
+        };
+
+        function updateTexts() {
+            const t = translations[currentLang] || translations['en'];
+            document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
+            document.documentElement.lang = currentLang;
+
+            document.getElementById('app-title').textContent = t.title;
+            document.getElementById('txt-income-lbl').textContent = t.incomeLbl; document.getElementById('txt-expense-lbl').textContent = t.expenseLbl;
+            document.getElementById('txt-net-lbl').textContent = t.netLbl; document.getElementById('txt-chart-title').textContent = t.chartCatTitle;
+            document.getElementById('txt-chart-empty').textContent = t.chartEmptyMsg;
+            document.getElementById('description').placeholder = t.descPh; document.getElementById('amount').placeholder = t.amountPh;
+            document.getElementById('opt-exp').textContent = t.optExp; document.getElementById('opt-inc').textContent = t.optInc;
+            document.getElementById('cat-food').textContent = `🍔 ${t.cats.food}`; document.getElementById('cat-trans').textContent = `🚗 ${t.cats.transport}`;
+            document.getElementById('cat-bills').textContent = `🏠 ${t.cats.bills}`; document.getElementById('cat-shop').textContent = `🛍️ ${t.cats.shopping}`;
+            document.getElementById('cat-sal').textContent = `💼 ${t.cats.salary}`; document.getElementById('cat-oth').textContent = `✨ ${t.cats.other}`;
+            document.getElementById('btn-submit').innerHTML = editingIndex > -1 ? t.submitBtnEdit : t.submitBtnAdd;
+            document.getElementById('form-title').innerHTML = t.formTitleEdit; document.getElementById('btn-cancel-edit').textContent = t.cancelEdit;
+            document.getElementById('txt-history-lbl').textContent = t.historyLbl; document.getElementById('search-input').placeholder = t.searchPh;
+            document.getElementById('txt-recurring-lbl').textContent = t.recurringLbl;
+            
+            document.getElementById('txt-settings-title').textContent = t.settingsTitle;
+            document.getElementById('txt-sec-lbl').textContent = t.secLbl; document.getElementById('txt-sec-desc').textContent = t.secDesc;
+            document.getElementById('btn-pin-toggle').textContent = appPin ? t.btnRemove : t.btnSetup;
+            document.getElementById('txt-lang-lbl').textContent = t.langLbl; document.getElementById('txt-curr-lbl').textContent = t.currLbl;
+            document.getElementById('txt-filter-lbl').textContent = t.filterLbl;
+            document.getElementById('txt-budget-lbl').textContent = t.budgetLbl; document.getElementById('btn-save-budget').textContent = t.budgetSave;
+            document.getElementById('txt-data-lbl').textContent = t.dataLbl;
+            document.getElementById('btn-export').innerHTML = t.btnExport; document.getElementById('txt-import').textContent = t.btnImport;
+            document.getElementById('btn-clear').innerHTML = t.btnClear;
+            document.getElementById('modal-cancel').textContent = t.modalCancel; document.getElementById('modal-confirm').textContent = t.modalConfirm;
+            document.getElementById('txt-pin-title').textContent = t.pinTitle;
+            document.getElementById('txt-avg-lbl').textContent = t.avgLbl; document.getElementById('txt-max-lbl').textContent = t.maxLbl;
+
+            ['ar', 'en'].forEach(l => {
+                const btn = document.getElementById(`btn-lang-${l}`);
+                if(btn) btn.className = l === currentLang ? "flex-1 text-[10px] py-1.5 rounded-lg transition cursor-pointer font-bold border border-cyan-500 bg-cyan-950/40 text-cyan-400" : "flex-1 text-[10px] py-1.5 rounded-lg transition cursor-pointer font-bold border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-400";
+            });
+            ['mad', 'usd'].forEach(c => {
+                const btn = document.getElementById(`btn-curr-${c}`);
+                if(btn) btn.className = c.toUpperCase() === currentCurr ? "flex-1 text-[10px] py-1.5 rounded-lg bg-emerald-600 text-slate-950 font-bold transition cursor-pointer shadow-md shadow-emerald-900/50" : "flex-1 text-[10px] py-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer font-bold";
+            });
+
+            const searchIcon = document.querySelector('.fa-magnifying-glass.absolute');
+            if(currentLang === 'ar') { searchIcon.classList.replace('left-2.5', 'right-2.5'); document.getElementById('search-input').classList.replace('pl-7', 'pr-7'); document.getElementById('search-input').classList.replace('pr-3', 'pl-3');} 
+            else { searchIcon.classList.replace('right-2.5', 'left-2.5'); document.getElementById('search-input').classList.replace('pr-7', 'pl-7'); document.getElementById('search-input').classList.replace('pl-3', 'pr-3');}
+
+            populateFilterDropdown();
+            updateUI();
+        }
+
+        function setLanguage(lang) { currentLang = lang; localStorage.setItem('apex_lang', lang); updateTexts(); }
+        function setCurrency(curr) { currentCurr = curr; localStorage.setItem('apex_curr', curr); updateTexts(); }
+        function saveBudget() { monthlyBudget = parseFloat(document.getElementById('budget-input').value) || 0; localStorage.setItem('apex_budget', monthlyBudget); updateUI(); closeSettings(); if (navigator.vibrate) navigator.vibrate(30); }
+        
+        function populateFilterDropdown() {
+            const select = document.getElementById('month-filter'); const t = translations[currentLang]; const monthsSet = new Set();
+            const currentYear = new Date().getFullYear();
+            for(let m = 1; m <= 12; m++) { const monthStr = m < 10 ? '0' + m : '' + m; monthsSet.add(`${currentYear}-${monthStr}`); }
+            transactions.forEach(tx => { if(tx.date) monthsSet.add(tx.date.substring(0, 7)); });
+            const sortedMonths = Array.from(monthsSet).sort().reverse();
+            select.innerHTML = `<option value="all">${t.optFilterAll}</option>`;
+            sortedMonths.forEach(ym => { const [year, month] = ym.split('-'); select.innerHTML += `<option value="${ym}">${t.months[parseInt(month) - 1]} ${year}</option>`; });
+            select.value = sortedMonths.includes(currentFilter) ? currentFilter : 'all';
+        }
+        
+        function applyFilter() { currentFilter = document.getElementById('month-filter').value; selectedChartCategory = null; updateUI(); }
+        function toggleCatFilter(catKey) { selectedChartCategory = selectedChartCategory === catKey ? null : catKey; if (navigator.vibrate) navigator.vibrate(20); updateUI(); }
+
+        function updateUI() {
+            const listEl = document.getElementById('transaction-list');
+            listEl.innerHTML = '';
+            let income = 0; let expense = 0; let filteredExpense = 0;
+            let catTotals = { food: 0, transport: 0, bills: 0, shopping: 0, salary: 0, other: 0 };
+            const t = translations[currentLang];
+            let currSymbol = currentCurr === 'MAD' ? (currentLang === 'ar' ? 'د.م' : 'MAD') : '$';
+            const searchQuery = document.getElementById('search-input').value.toLowerCase();
+
+            // Track max expense for insights
+            let maxExpenseAmount = 0;
+            let maxExpenseDesc = "...";
+
+            let filteredList = transactions.filter(tx => {
+                const matchMonth = currentFilter === 'all' || (tx.date && tx.date.startsWith(currentFilter));
+                const matchSearch = tx.description.toLowerCase().includes(searchQuery);
+                const matchCat = selectedChartCategory === null || tx.category === selectedChartCategory;
+                return matchMonth && matchSearch && matchCat;
+            });
+
+            if (filteredList.length === 0) listEl.innerHTML = `<p class="text-center text-xs text-slate-500 py-6">${t.emptyMsg}</p>`;
+
+            filteredList.forEach(tx => {
+                const originalIndex = transactions.indexOf(tx);
+                const li = document.createElement('li');
+                const isEditing = editingIndex === originalIndex;
+                const borderClasses = tx.type === 'income' ? 'border-emerald-900/30' : 'border-rose-900/30';
+                const bgClasses = isEditing ? 'bg-cyan-950/60 border-cyan-500/50' : (tx.type === 'income' ? 'bg-emerald-950/10' : 'bg-rose-950/10');
+                const recurIcon = tx.isRecurring ? `<i class="fa-solid fa-arrows-rotate text-[8px] text-cyan-500 ml-1 mr-1" title="Recurring"></i>` : '';
+
+                li.className = `flex justify-between items-center p-3 rounded-xl border transition-all ${bgClasses} ${isEditing ? 'border-cyan-500/50' : borderClasses} shadow-sm`;
+                const catName = t.cats[tx.category] || tx.category;
+                
+                li.innerHTML = `
+                    <div class="flex items-center gap-3 overflow-hidden">
+                        <div class="w-9 h-9 rounded-full flex shrink-0 items-center justify-center text-sm ${tx.type === 'income' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}"><i class="fa-solid ${getCategoryIcon(tx.category)}"></i></div>
+                        <div class="truncate">
+                            <span class="block text-sm font-medium text-slate-200 truncate">${tx.description}</span>
+                            <span class="text-[10px] text-slate-500 flex items-center">${catName} • ${tx.date || ''} ${recurIcon}</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-end gap-1 shrink-0 ml-2">
+                        <span class="text-sm font-bold ${tx.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}">${tx.type === 'income' ? '+' : '-'}${Math.abs(tx.amount).toFixed(2)}</span>
+                        <div class="flex gap-3 mt-1">
+                            <button onclick="startEdit(${originalIndex})" class="text-slate-500 hover:text-cyan-400 transition text-xs"><i class="fa-solid fa-pen"></i></button>
+                            <button onclick="requestDeleteTransaction(${originalIndex})" class="text-slate-500 hover:text-rose-400 transition text-xs"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                `;
+                listEl.appendChild(li);
+            });
+
+            transactions.filter(tx => currentFilter === 'all' || (tx.date && tx.date.startsWith(currentFilter))).forEach(tx => {
+                if (tx.type === 'income') { income += Number(tx.amount); } 
+                else {
+                    expense += Number(tx.amount); filteredExpense += Number(tx.amount);
+                    if(catTotals[tx.category] !== undefined) catTotals[tx.category] += Number(tx.amount); else catTotals.other += Number(tx.amount);
+                    
+                    if(Number(tx.amount) > maxExpenseAmount) {
+                        maxExpenseAmount = Number(tx.amount);
+                        maxExpenseDesc = `${tx.description} (${maxExpenseAmount} ${currSymbol})`;
+                    }
+                }
+            });
+
+            document.getElementById('total-income').textContent = income.toFixed(2) + ' ' + currSymbol;
+            document.getElementById('total-expense').textContent = expense.toFixed(2) + ' ' + currSymbol;
+            document.getElementById('net-balance').textContent = (income - expense).toFixed(2) + ' ' + currSymbol;
+
+            // NEW: Smart Insights Display
+            const insightsCont = document.getElementById('insights-container');
+            if(expense > 0 && currentFilter !== 'all') {
+                insightsCont.classList.remove('hidden'); insightsCont.classList.add('flex');
+                
+                // Calculate days passed in the selected month
+                const [y, m] = currentFilter.split('-');
+                const selectedDate = new Date(y, parseInt(m)-1, 1);
+                const now = new Date();
+                let days = 30; // default
+                if(selectedDate.getFullYear() === now.getFullYear() && selectedDate.getMonth() === now.getMonth()) {
+                    days = Math.max(1, now.getDate());
+                } else {
+                    days = new Date(y, m, 0).getDate(); // Total days in that month
+                }
+                const avg = expense / days;
+
+                document.getElementById('insight-avg').textContent = `${avg.toFixed(0)} ${currSymbol}`;
+                document.getElementById('insight-max').textContent = maxExpenseDesc;
+            } else {
+                insightsCont.classList.add('hidden'); insightsCont.classList.remove('flex');
+            }
+
+            // Budget Progress
+            const budgetCont = document.getElementById('budget-container');
+            if (monthlyBudget > 0 && currentFilter !== 'all') {
+                budgetCont.classList.remove('hidden');
+                const percent = Math.min((filteredExpense / monthlyBudget) * 100, 100);
+                const bar = document.getElementById('budget-bar'); bar.style.width = `${percent}%`;
+                if (percent >= 90) bar.className = "h-2 rounded-full transition-all duration-500 bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]";
+                else if (percent >= 70) bar.className = "h-2 rounded-full transition-all duration-500 bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.4)]";
+                else bar.className = "h-2 rounded-full transition-all duration-500 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]";
+                document.getElementById('txt-budget-used').textContent = `${t.budgetUsed} ${filteredExpense.toFixed(0)}`;
+                document.getElementById('txt-budget-total').textContent = `${t.budgetFrom} ${monthlyBudget} ${currSymbol}`;
+            } else { budgetCont.classList.add('hidden'); }
+
+            const badge = document.getElementById('active-cat-badge');
+            if (selectedChartCategory) {
+                badge.classList.remove('hidden');
+                document.getElementById('txt-active-cat').textContent = `${t.filterPrefix} ${t.cats[selectedChartCategory]}`;
+            } else { badge.classList.add('hidden'); }
+
+            localStorage.setItem('transactions_apex_pure', JSON.stringify(transactions));
+            updateCharts(catTotals, expense, currSymbol);
+        }
+
+        document.getElementById('transaction-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newTx = { 
+                description: document.getElementById('description').value, 
+                amount: parseFloat(document.getElementById('amount').value), 
+                type: document.getElementById('type').value, 
+                category: document.getElementById('category').value, 
+                date: document.getElementById('tx-date').value,
+                isRecurring: document.getElementById('is-recurring').checked // NEW
+            };
+            if (editingIndex > -1) { transactions[editingIndex] = newTx; cancelEdit(); } 
+            else { 
+                transactions.unshift(newTx); document.getElementById('transaction-form').reset(); document.getElementById('tx-date').valueAsDate = new Date();
+                currentFilter = 'all'; selectedChartCategory = null; populateFilterDropdown(); document.getElementById('search-input').value = '';
+                if (navigator.vibrate) navigator.vibrate(50);
+            }
+            updateUI();
+        });
+
+        function startEdit(index) {
+            editingIndex = index; const tx = transactions[index];
+            document.getElementById('description').value = tx.description; document.getElementById('amount').value = Math.abs(tx.amount);
+            document.getElementById('type').value = tx.type; document.getElementById('category').value = tx.category; document.getElementById('tx-date').value = tx.date;
+            document.getElementById('is-recurring').checked = tx.isRecurring || false; // NEW
+            const t = translations[currentLang];
+            document.getElementById('btn-submit').innerHTML = t.submitBtnEdit; document.getElementById('form-title').classList.remove('hidden'); document.getElementById('btn-cancel-edit').classList.remove('hidden');
+            document.getElementById('transaction-form').classList.add('border-cyan-500/30', 'bg-cyan-950/60');
+            updateUI(); document.getElementById('app-container').scrollIntoView({ behavior: 'smooth' });
+        }
+        function cancelEdit() {
+            editingIndex = -1; document.getElementById('transaction-form').reset(); document.getElementById('tx-date').valueAsDate = new Date();
+            const t = translations[currentLang];
+            document.getElementById('btn-submit').innerHTML = t.submitBtnAdd; document.getElementById('form-title').classList.add('hidden'); document.getElementById('btn-cancel-edit').classList.add('hidden');
+            document.getElementById('transaction-form').classList.remove('border-cyan-500/30', 'bg-cyan-950/60');
+            updateUI();
+        }
+
+        function openSettings() { document.getElementById('settings-modal').classList.remove('hidden'); document.getElementById('settings-modal').classList.add('flex'); }
+        function closeSettings() { document.getElementById('settings-modal').classList.add('hidden'); document.getElementById('settings-modal').classList.remove('flex'); }
+        function openConfirmModal(title, desc, actionType, index = -1) { closeSettings(); document.getElementById('modal-title').textContent = title; document.getElementById('modal-desc').textContent = desc; modalActionType = actionType; modalActionIndex = index; document.getElementById('custom-modal').classList.remove('hidden'); document.getElementById('custom-modal').classList.add('flex'); if (navigator.vibrate) navigator.vibrate([30, 50, 30]); }
+        function closeConfirmModal() { document.getElementById('custom-modal').classList.add('hidden'); document.getElementById('custom-modal').classList.remove('flex'); }
+        function confirmModalAction() {
+            if (modalActionType === 'all') { transactions = []; selectedChartCategory = null; if(editingIndex > -1) cancelEdit(); } 
+            else if (modalActionType === 'single') { transactions.splice(modalActionIndex, 1); if (editingIndex === modalActionIndex) cancelEdit(); else if (editingIndex > modalActionIndex) editingIndex--; }
+            closeConfirmModal(); populateFilterDropdown(); updateUI();
+        }
+        function requestClearAll() { if(transactions.length === 0) return; openConfirmModal(translations[currentLang].modalTitleClearAll, translations[currentLang].modalDescClearAll, 'all'); }
+        function requestDeleteTransaction(index) { openConfirmModal(translations[currentLang].modalTitleClearSingle, translations[currentLang].modalDescClearSingle, 'single', index); }
+
+        function exportToCSV() {
+            if (transactions.length === 0) return; const t = translations[currentLang]; let csvContent = '\uFEFF' + `Date,Description,Category,Type,Amount,Recurring\n`;
+            transactions.forEach(tx => { const safeDesc = `"${tx.description.replace(/"/g, '""')}"`; csvContent += `${tx.date},${safeDesc},${tx.category},${tx.type},${Math.abs(tx.amount)},${tx.isRecurring?'Yes':'No'}\n`; });
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'Apex_Finance_Backup.csv'; document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+
+        function importCSV(event) {
+            const file = event.target.files[0]; if (!file) return; const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result; const lines = text.split('\n');
+                if(lines.length > 1) {
+                    for(let i=1; i<lines.length; i++) {
+                        if(!lines[i].trim()) continue;
+                        const parts = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+                        if(parts.length >= 5) {
+                            const date = parts[0].trim(); const desc = parts[1].replace(/(^"|"$)/g, '').trim(); const cat = parts[2].trim(); const type = parts[3].trim(); const amount = parseFloat(parts[4].trim());
+                            const isRecur = parts[5] ? (parts[5].trim().toLowerCase() === 'yes') : false;
+                            if(date && desc && !isNaN(amount)) transactions.push({ date, description: desc, category: cat, type: type === 'expense' || type === 'مصروف (-)' ? 'expense' : 'income', amount, isRecurring: isRecur });
+                        }
+                    }
+                    transactions.sort((a,b) => new Date(b.date) - new Date(a.date)); alert(translations[currentLang].importSuccess); populateFilterDropdown(); updateUI(); closeSettings();
+                }
+            }; reader.readAsText(file); event.target.value = '';
+        }
+
+        function updateCharts(catTotals, totalExp, currSymbol) {
+            const t = translations[currentLang];
+            const ctxCat = document.getElementById('expenseChart').getContext('2d');
+            const dataCat = [catTotals.food, catTotals.transport, catTotals.bills, catTotals.shopping, catTotals.salary, catTotals.other];
+            const labelsCat = [t.cats.food, t.cats.transport, t.cats.bills, t.cats.shopping, t.cats.salary, t.cats.other];
+            
+            const chartWrapper = document.getElementById('chart-wrapper');
+            const emptyMsgDiv = document.getElementById('chart-empty');
+            const legendDiv = document.getElementById('chart-legend');
+
+            if(totalExp === 0) {
+                chartWrapper.classList.add('hidden'); emptyMsgDiv.classList.remove('hidden'); emptyMsgDiv.classList.add('flex');
+                if(expenseChart) { expenseChart.destroy(); expenseChart = null; }
+                return;
+            } else {
+                chartWrapper.classList.remove('hidden'); emptyMsgDiv.classList.add('hidden'); emptyMsgDiv.classList.remove('flex');
+            }
+
+            let legendHTML = '';
+            dataCat.forEach((amt, i) => {
+                if (amt > 0) {
+                    const pct = Math.round((amt / totalExp) * 100);
+                    const isActive = selectedChartCategory === catKeysAll[i];
+                    const activeClass = isActive ? 'bg-cyan-900/40 border-cyan-500/50' : 'bg-slate-900/30 border-transparent';
+                    legendHTML += `
+                        <div onclick="toggleCatFilter('${catKeysAll[i]}')" class="flex justify-between items-center p-2 rounded-lg border cursor-pointer hover:bg-slate-800 transition-all ${activeClass}">
+                            <div class="flex items-center gap-2 overflow-hidden">
+                                <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: ${chartColors[i]}"></span>
+                                <span class="text-[11px] text-slate-300 truncate">${labelsCat[i]}</span>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0 ml-1">
+                                <span class="text-[11px] font-bold text-slate-200">${amt.toFixed(0)}</span>
+                                <span class="text-[9px] text-slate-500 w-6 text-right">${pct}%</span>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+            legendDiv.innerHTML = legendHTML;
+
+            if (expenseChart) { 
+                expenseChart.data.labels = labelsCat; expenseChart.data.datasets[0].data = dataCat; expenseChart.update(); 
+            } else {
+                expenseChart = new Chart(ctxCat, { 
+                    type: 'doughnut', data: { labels: labelsCat, datasets: [{ data: dataCat, backgroundColor: chartColors, borderWidth: 2, borderColor: '#020617', hoverOffset: 4 }] }, 
+                    options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false } }, onClick: (event, elements) => { if (elements.length > 0) toggleCatFilter(catKeysAll[elements[0].index]); } } 
+                });
+            }
+        }
+
+        function getCategoryIcon(cat) { switch(cat) { case 'food': return 'fa-utensils'; case 'transport': return 'fa-car'; case 'bills': return 'fa-house'; case 'shopping': return 'fa-bag-shopping'; case 'salary': return 'fa-briefcase'; default: return 'fa-tag'; } }
+
+        updateTexts();
+    </script>
+</body>
+</html>
